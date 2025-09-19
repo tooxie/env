@@ -1,6 +1,7 @@
 package env
 
 import (
+	err "errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -27,7 +28,10 @@ func Get[T any](name string) T {
 				"not previously registered. Call `env.Assert()` first.", name))
 	}
 
-	value := envVar.Value.Interface().(T)
+	value, ok := envVar.Value.Interface().(T)
+	if !ok {
+		panic(fmt.Sprintf("Invalid type for key '%s': %T", name, value))
+	}
 	return value
 }
 
@@ -43,42 +47,30 @@ func Assert(variables interface{}) error {
 	}
 
 	if len(errors) > 0 {
-		return fmt.Errorf(strings.Join(errors, "\n"))
+		return err.New(strings.Join(errors, "\n"))
 	}
 
 	return nil
 }
 
-func runValidatorAndParser(fieldName string, fieldType string, value string) (bool, any) {
-	var isValid bool
+func parseVariable(fieldName string, fieldType string, value string) (any, error) {
+	var ok error
 	var parsed any
 	switch fieldType {
 	case "Bool":
-		isValid = boolValidator(value)
-		if isValid {
-			parsed = boolParser(value)
-		}
+		parsed, ok = boolParser(value)
 	case "String":
-		isValid = stringValidator(value)
-		if isValid {
-			parsed = stringParser(value)
-		}
+		parsed, ok = stringParser(value)
 	case "IPv4":
-		isValid = ipv4Validator(value)
-		if isValid {
-			parsed = ipv4Parser(value)
-		}
+		parsed, ok = ipv4Parser(value)
 	case "Int":
-		isValid = intValidator(value)
-		if isValid {
-			parsed = intParser(value)
-		}
+		parsed, ok = intParser(value)
 	default:
 		panic(fmt.Sprintf(
 			"Unrecognized type '%s' for field '%s'", fieldType, fieldName))
 	}
 
-	return isValid, parsed
+	return parsed, ok
 }
 
 func Validate(variables interface{}) ([]string, []invalidType) {
@@ -112,31 +104,30 @@ func Validate(variables interface{}) ([]string, []invalidType) {
 			missing = append(missing, field.Name)
 		}
 
-		var isValid bool
+		var ok error
 		var parsed any
 		kind := field.Type.Kind().String()
 		if kind == "slice" {
 			sliceOf := reflect.SliceOf(field.Type).String()
 			sep := getSeparator(field.Tag.Get("env"))
 			start := len("[][]env.")
-			isValid, parsed = validateAndParseSlice(field.Name, sliceOf[start:], value, sep)
+			parsed, ok = validateAndParseSlice(field.Name, sliceOf[start:], value, sep)
 		} else {
-			isValid, parsed = runValidatorAndParser(field.Name, field.Type.Name(), value)
+			parsed, ok = parseVariable(field.Name, field.Type.Name(), value)
 		}
 
-		if !isValid {
+		if ok != nil {
 			invalid = append(invalid, invalidType{field.Name, value})
 		} else {
+			var varType reflect.Kind
 			if kind == "slice" {
-				environment[field.Name] = envVarType{
-					reflect.ValueOf(parsed),
-					reflect.SliceOf(field.Type).Kind(),
-				}
+				varType = reflect.SliceOf(field.Type).Kind()
 			} else {
-				environment[field.Name] = envVarType{
-					reflect.ValueOf(parsed),
-					field.Type.Kind(),
-				}
+				varType = field.Type.Kind()
+			}
+			environment[field.Name] = envVarType{
+				reflect.ValueOf(parsed),
+				varType,
 			}
 		}
 	}
@@ -145,14 +136,17 @@ func Validate(variables interface{}) ([]string, []invalidType) {
 	return missing, invalid
 }
 
-func validateAndParseSlice(fieldName string, fieldType string, value string, sep string) (bool, []any) {
+func validateAndParseSlice(fieldName string, fieldType string, value string, sep string) ([]any, error) {
 	var values []any
-	isAllValid := true
+	var allOk = true
 	for _, slice := range strings.Split(value, sep) {
-		isValid, parsed := runValidatorAndParser(fieldName, fieldType, slice)
+		parsed, ok := parseVariable(fieldName, fieldType, slice)
 		values = append(values, parsed)
-		isAllValid = isAllValid && isValid
+		allOk = allOk && ok == nil
 	}
 
-	return isAllValid, values
+	if !allOk {
+		return values, fmt.Errorf("invalid slice: %v", allOk)
+	}
+	return values, nil
 }
