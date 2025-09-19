@@ -1,4 +1,4 @@
-package main
+package env
 
 func in(needle string, haystack []string) bool {
 	for _, value := range haystack {

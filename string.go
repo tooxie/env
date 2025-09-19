@@ -1,4 +1,4 @@
-package main
+package env
 
 func stringValidator(value string) bool {
 	return true
