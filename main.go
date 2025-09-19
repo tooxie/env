@@ -28,6 +28,22 @@ func Get[T any](name string) T {
 				"not previously registered. Call `env.Assert()` first.", name))
 	}
 
+	// Handle slice types specially
+	if envVar.Type == reflect.Slice {
+		sliceValue := envVar.Value
+		if sliceValue.Kind() == reflect.Slice {
+			// Convert []interface{} to the target slice type
+			result := reflect.MakeSlice(reflect.TypeOf((*T)(nil)).Elem(), sliceValue.Len(), sliceValue.Cap())
+			for i := 0; i < sliceValue.Len(); i++ {
+				elem := sliceValue.Index(i)
+				if elem.CanInterface() {
+					result.Index(i).Set(reflect.ValueOf(elem.Interface()))
+				}
+			}
+			return result.Interface().(T)
+		}
+	}
+
 	value, ok := envVar.Value.Interface().(T)
 	if !ok {
 		panic(fmt.Sprintf("Invalid type for key '%s': %T", name, value))
@@ -56,14 +72,15 @@ func Assert(variables interface{}) error {
 func parseVariable(fieldName string, fieldType string, value string) (any, error) {
 	var ok error
 	var parsed any
-	switch fieldType {
-	case "Bool":
+	normalizedFieldType := strings.ToLower(fieldType)
+	switch normalizedFieldType {
+	case "bool":
 		parsed, ok = boolParser(value)
-	case "String":
+	case "string":
 		parsed, ok = stringParser(value)
-	case "IPv4":
+	case "ipv4":
 		parsed, ok = ipv4Parser(value)
-	case "Int":
+	case "int":
 		parsed, ok = intParser(value)
 	default:
 		panic(fmt.Sprintf(
@@ -88,30 +105,42 @@ func Validate(variables interface{}) ([]string, []invalidType) {
 		value := os.Getenv(field.Name)
 		optional := isOptional(field.Tag.Get("env"))
 
-		if value == "" && optional {
-			if hasDefault(field.Tag.Get("env")) {
-				value = getDefault(field.Tag.Get("env"))
-			} else {
-				environment[field.Name] = envVarType{
-					reflect.Zero(field.Type),
-					field.Type.Kind(),
+		if value == "" {
+			if optional {
+				// If the field is optional, we can use the default value if it exists
+				if hasDefault(field.Tag.Get("env")) {
+					value = getDefault(field.Tag.Get("env"))
+				} else {
+					// If the field is optional and has no default value, we can use a zero value
+					environment[field.Name] = envVarType{
+						reflect.Zero(field.Type),
+						field.Type.Kind(),
+					}
+
+					// We can continue to the next field, nothing to validate
+					continue
 				}
+			} else {
+				// If the field is required and has no value, we add it to the missing list
+				missing = append(missing, field.Name)
+
+				// We can continue to the next field, nothing to validate
 				continue
 			}
-		}
-
-		if value == "" && !optional {
-			missing = append(missing, field.Name)
 		}
 
 		var ok error
 		var parsed any
 		kind := field.Type.Kind().String()
 		if kind == "slice" {
-			sliceOf := reflect.SliceOf(field.Type).String()
 			sep := getSeparator(field.Tag.Get("env"))
-			start := len("[][]env.")
-			parsed, ok = validateAndParseSlice(field.Name, sliceOf[start:], value, sep)
+			// Get the element type from the slice
+			elementType := field.Type.Elem()
+			elementTypeName := elementType.Name()
+			if elementTypeName == "" {
+				elementTypeName = elementType.String()
+			}
+			parsed, ok = validateAndParseSlice(field.Name, elementTypeName, value, sep)
 		} else {
 			parsed, ok = parseVariable(field.Name, field.Type.Name(), value)
 		}
