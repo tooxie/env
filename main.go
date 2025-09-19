@@ -98,11 +98,8 @@ func Validate(variables interface{}) ([]string, []invalidType) {
 		optional := isOptional(field.Tag.Get("env"))
 
 		if value == "" && optional {
-			fmt.Println("OPTIONAL", field.Tag.Get("env"))
 			if hasDefault(field.Tag.Get("env")) {
-				fmt.Println("Has default!")
 				value = getDefault(field.Tag.Get("env"))
-				fmt.Println("New value:", value)
 			} else {
 				environment[field.Name] = envVarType{
 					reflect.Zero(field.Type),
