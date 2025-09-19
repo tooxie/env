@@ -7,6 +7,11 @@ import (
 
 const defaultSeparator = " "
 
+var (
+	defaultRegex   = regexp.MustCompile("default='(?P<Default>.*?)'")
+	separatorRegex = regexp.MustCompile("separator='(?P<Sep>.)'")
+)
+
 func toLower(tag string) string {
 	return strings.ToLower(tag)
 }
@@ -16,20 +21,17 @@ func isOptional(tag string) bool {
 }
 
 func hasDefault(tag string) bool {
-	r := regexp.MustCompile("default='(?P<Default>.*?)'")
-	m := r.FindAllStringSubmatch(tag, -1)
+	m := defaultRegex.FindAllStringSubmatch(tag, -1)
 	return len(m) > 0
 }
 
 func getDefault(tag string) string {
-	r := regexp.MustCompile("default='(?P<Default>.*?)'")
-	m := r.FindAllStringSubmatch(tag, -1)
+	m := defaultRegex.FindAllStringSubmatch(tag, -1)
 	return m[0][1]
 }
 
 func getSeparator(tag string) string {
-	r := regexp.MustCompile("separator='(?P<Sep>.)'")
-	m := r.FindAllStringSubmatch(tag, -1)
+	m := separatorRegex.FindAllStringSubmatch(tag, -1)
 
 	if len(m) == 0 {
 		return defaultSeparator
