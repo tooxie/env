@@ -136,6 +136,10 @@ func parseVariable(fieldName string, fieldType string, value string) (any, error
 		parsed, ok = ipv4Parser(value)
 	case "int":
 		parsed, ok = intParser(value)
+	case "url":
+		parsed, ok = urlParser(value)
+	case "httpurl":
+		parsed, ok = httpURLParser(value)
 	default:
 		panic(fmt.Sprintf(
 			"Unrecognized type '%s' for field '%s'", fieldType, fieldName))

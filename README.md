@@ -89,7 +89,7 @@ Default values can mask critical configuration issues and create a false sense o
 
 - **Startup Validation**: Fail fast if required environment variables are missing or invalid
 - **Type Safety**: Strong typing with generics for compile-time safety
-- **Multiple Types**: Support for strings, integers, booleans, IPv4 addresses, and slices
+- **Multiple Types**: Support for strings, integers, booleans, IPv4 addresses, URLs, and slices
 - **Optional Fields**: Mark fields as optional with default values (use with caution in production)
 - **Slice Support**: Parse comma-separated (or custom separator) lists
 - **Custom Types**: Define your own types with validation logic
@@ -114,18 +114,26 @@ go get github.com/tooxie/env
 
 ### Custom Types
 
-| Type   | Example         | Valid Values         |
-|--------|-----------------|----------------------|
-| `IPv4` | `"192.168.1.1"` | Valid IPv4 addresses |
+| Type     | Example               | Valid Values                                        |
+|----------|-----------------------|-----------------------------------------------------|
+| `IPv4`   | `"192.168.1.1"`       | Valid IPv4 addresses                                |
+| `URL`    | `"ftp://example.com"` | Valid URLs (must comply with `url.ParseRequestURI`) |
+| `HTTPURL`| `"https://api.com"`   | Valid HTTP/HTTPS URLs only                          |
+
+When requiring an HTTP URL the use of `env.HTTPURL` is preferred to prevent against
+protocol typos such as `htp://foo.com`, which would be rightfully treated by `env.URL`
+as a custom protocol.
 
 ### Slices
 
-| Type       | Example                  | Separator              |
-|------------|--------------------------|------------------------|
-| `[]string` | `"a,b,c"`                | `","` (Comma, default) |
-| `[]int`    | `"1 2 3"`                | `" "` (Space)          |
-| `[]bool`   | `"true;false"`           | `";"` (Semicolon)      |
-| `[]IPv4`   | `"192.168.1.1 10.0.0.1"` | `" "` (Space)          |
+| Type         | Example                            | Separator              |
+|--------------|------------------------------------|------------------------|
+| `[]string`   | `"a,b,c"`                          | `","` (Comma, default) |
+| `[]int`      | `"1 2 3"`                          | `" "` (Space)          |
+| `[]bool`     | `"true;false"`                     | `";"` (Semicolon)      |
+| `[]IPv4`     | `"192.168.1.1 10.0.0.1"`           | `" "` (Space)          |
+| `[]URL`      | `"ftp://files,http://web.com"`     | `","` (Comma)          |
+| `[]HTTPURL`  | `"https://api.com,http://web.com"` | `","` (Comma)          |
 
 ## Tag Options
 
@@ -140,15 +148,18 @@ go get github.com/tooxie/env
 ### Required Fields
 ```go
 type EnvConfig struct {
-	DatabaseURL string `env:"required"`
+	DatabaseURL string      `env:"required"`
+	FtpServer   env.URL     `env:"required,name='FTP_SERVER'"`
+	ApiUrl      env.HTTPURL `env:"required,name='API_URL'"`
 }
 ```
 
 ### Optional Fields with Defaults
 ```go
 type EnvConfig struct {
-	Port  int    `env:"optional,default='8080'"`
-	Debug bool   `env:"optional,default='false'"`
+	Port        int        `env:"optional,default='8080'"`
+	Debug       bool       `env:"optional,default='false'"`
+	ApiEndpoint env.HTTPURL `env:"optional,default='https://api.example.com'"`
 }
 ```
 
@@ -193,12 +204,14 @@ type EnvConfig struct {
 ```go
 // Environment:
 //   * DATABASEURL="postgres://localhost:5432/mydb"
+//   * API_URL="https://api.example.com"
 //   * SERVER_PORT="8080"
 //   * DEBUG_MODE="true"
 //   * ALLOWED_HOSTS="localhost|127.0.0.1|example.com"
 
 type EnvConfig struct {
 	DatabaseURL string     `env:"required"`                                    // DATABASEURL
+	ApiURL      env.URL    `env:"required,name='API_URL'"`                     // API_URL
 	Port        int        `env:"optional,default='3000',name='SERVER_PORT'"`  // SERVER_PORT
 	Debug       bool       `env:"optional,default='false',name='DEBUG_MODE'"`  // DEBUG_MODE
 	Hosts       []string   `env:"required,separator='|',name='ALLOWED_HOSTS'"` // HOSTS
@@ -211,6 +224,7 @@ if err != nil {
 }
 
 fmt.Printf("DB_URL: %s\n", config.DatabaseURL) // postgres://localhost:5432/mydb (string)
+fmt.Printf("API URL: %s\n", config.ApiURL)     // https://api.example.com (env.URL)
 fmt.Printf("Port: %d\n", config.Port)          // 8080 (int)
 fmt.Printf("Debug: %v\n", config.Debug)        // true (bool)
 fmt.Printf("Hosts: %v\n", config.Hosts)        // ["localhost", "127.0.0.1", "example.com"] ([]string)
@@ -219,17 +233,21 @@ fmt.Printf("Hosts: %v\n", config.Hosts)        // ["localhost", "127.0.0.1", "ex
 ### Slice Examples with Different Separators
 
 ```go
-// Environment variables:
-// HOSTS="server1|server2|server3"
-// PORTS="80;443;8080"
-// FEATURES="true false true"
-// ALLOWED_IPS="192.168.1.1#10.0.0.1#172.16.0.1"
+// Environment:
+//   * HOSTS="server1|server2|server3"
+//   * PORTS="80;443;8080"
+//   * FEATURES="true false true"
+//   * ALLOWEDIPS="192.168.1.1#10.0.0.1#172.16.0.1"
+//   * APIURLS="https://api1.com,https://api2.com,https://api3.com"
+//   * WEBENDPOINTS="https://web1.com,https://web2.com"
 
 type ServerConfig struct {
-	Hosts      []string   `env:"required,separator='|'"`
-	Ports      []int      `env:"required,separator=';'"`
-	Features   []bool     `env:"optional,separator=' ',default='true false'"`
-	AllowedIPs []env.IPv4 `env:"optional,separator='#',default='127.0.0.1'"`
+	Hosts        []string      `env:"required,separator='|'"`
+	Ports        []int         `env:"required,separator=';'"`
+	Features     []bool        `env:"optional,separator=' ',default='true false'"`
+	AllowedIPs   []env.IPv4    `env:"optional,separator='#',default='127.0.0.1'"`
+	ApiURLs      []env.URL     `env:"optional,separator=',',default='https://api.example.com'"`
+	WebEndpoints []env.HTTPURL `env:"optional,separator=',',default='https://web.example.com'"`
 }
 
 var serverConfig ServerConfig
@@ -242,6 +260,7 @@ fmt.Printf("Hosts: %v\n", config.Hosts)      // ["server1", "server2", "server3"
 fmt.Printf("Ports: %v\n", config.Ports)      // [80, 443, 8080]
 fmt.Printf("Features: %v\n", config.Features) // [true, false, true]
 fmt.Printf("Allowed IPs: %v\n", config.AllowedIPs) // [IPv4("192.168.1.1"), IPv4("10.0.0.1"), IPv4("172.16.0.1")]
+fmt.Printf("API URLs: %v\n", config.ApiURLs)  // [URL("https://api1.com"), URL("https://api2.com"), URL("https://api3.com")]
 ```
 
 ## API Reference
