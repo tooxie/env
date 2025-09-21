@@ -20,39 +20,9 @@ type invalidType struct {
 
 var envMap envMapType
 
-func Get[T any](name string) T {
-	envVar, ok := envMap[name]
-	if !ok {
-		panic(fmt.Sprintf(
-			"Invalid key '%s': Can't access environment variables that were "+
-				"not previously registered. Call `env.Assert()` first.", name))
-	}
-
-	// Handle slice types specially
-	if envVar.Type == reflect.Slice {
-		sliceValue := envVar.Value
-		if sliceValue.Kind() == reflect.Slice {
-			// Convert []interface{} to the target slice type
-			result := reflect.MakeSlice(reflect.TypeOf((*T)(nil)).Elem(), sliceValue.Len(), sliceValue.Cap())
-			for i := 0; i < sliceValue.Len(); i++ {
-				elem := sliceValue.Index(i)
-				if elem.CanInterface() {
-					result.Index(i).Set(reflect.ValueOf(elem.Interface()))
-				}
-			}
-			return result.Interface().(T)
-		}
-	}
-
-	value, ok := envVar.Value.Interface().(T)
-	if !ok {
-		panic(fmt.Sprintf("Invalid type for key '%s': %T", name, value))
-	}
-	return value
-}
-
-func Assert(variables interface{}) error {
-	missing, invalid := Validate(variables)
+// Assert validates environment variables and returns a populated struct instance
+func Assert[T any](config T) (T, error) {
+	missing, invalid := Validate(config)
 
 	var errors []string
 	if missing != nil {
@@ -63,12 +33,96 @@ func Assert(variables interface{}) error {
 	}
 
 	if len(errors) > 0 {
-		return err.New(strings.Join(errors, "\n"))
+		var zero T
+		return zero, err.New(strings.Join(errors, "\n"))
 	}
 
-	return nil
+	// Create a new instance of the struct and populate it with parsed values
+	result := reflect.New(reflect.TypeOf(config)).Elem()
+
+	for n := 0; n < result.NumField(); n++ {
+		field := result.Field(n)
+		fieldName := result.Type().Field(n).Name
+
+		// Get the parsed value from envMap
+		if envVar, ok := envMap[fieldName]; ok {
+			// Handle slice types specially
+			if envVar.Type == reflect.Slice {
+				sliceValue := envVar.Value
+				if sliceValue.Kind() == reflect.Slice {
+					// Convert []interface{} to the target slice type
+					result := reflect.MakeSlice(field.Type(), sliceValue.Len(), sliceValue.Cap())
+					for i := 0; i < sliceValue.Len(); i++ {
+						elem := sliceValue.Index(i)
+						if elem.CanInterface() {
+							// Convert the element to the correct type
+							elemValue := reflect.ValueOf(elem.Interface())
+							if elemValue.Type().ConvertibleTo(field.Type().Elem()) {
+								result.Index(i).Set(elemValue.Convert(field.Type().Elem()))
+							} else {
+								// If direct conversion fails, try to parse as string first
+								if elemValue.Type() == reflect.TypeOf("") {
+									// Element is a string, parse it
+									elemStr := elem.Interface().(string)
+									parsed, err := parseVariable(fieldName, field.Type().Elem().Name(), elemStr)
+									if err == nil {
+										parsedValue := reflect.ValueOf(parsed)
+										if parsedValue.Type().ConvertibleTo(field.Type().Elem()) {
+											result.Index(i).Set(parsedValue.Convert(field.Type().Elem()))
+										} else {
+											// For custom string types like IPv4, create from the parsed string
+											if field.Type().Elem().Kind() == reflect.String {
+												customType := reflect.New(field.Type().Elem()).Elem()
+												customType.SetString(parsed.(string))
+												result.Index(i).Set(customType)
+											} else {
+												result.Index(i).Set(parsedValue)
+											}
+										}
+									} else {
+										result.Index(i).Set(elemValue)
+									}
+								} else {
+									result.Index(i).Set(elemValue)
+								}
+							}
+						}
+					}
+					field.Set(result)
+				}
+			} else {
+				// For non-slice types, set the value directly
+				// But first check if we need to convert custom types
+				if envVar.Value.Type().ConvertibleTo(field.Type()) {
+					field.Set(envVar.Value.Convert(field.Type()))
+				} else {
+					// For custom string types like IPv4, create from the parsed string
+					if field.Type().Kind() == reflect.String && envVar.Value.Type() == reflect.TypeOf("") {
+						customType := reflect.New(field.Type()).Elem()
+						customType.SetString(envVar.Value.Interface().(string))
+						field.Set(customType)
+					} else {
+						field.Set(envVar.Value)
+					}
+				}
+			}
+		}
+	}
+
+	return result.Interface().(T), nil
 }
 
+// MustAssert validates environment variables and returns a populated struct instance
+// It panics if validation fails, making it convenient for the common use case
+func MustAssert[T any](config T) T {
+	result, err := Assert(config)
+	if err != nil {
+		panic(fmt.Sprintf("Configuration error: %v", err))
+	}
+	return result
+}
+
+// Parses the value of the environment variable into the correct type
 func parseVariable(fieldName string, fieldType string, value string) (any, error) {
 	var ok error
 	var parsed any
@@ -90,6 +144,20 @@ func parseVariable(fieldName string, fieldType string, value string) (any, error
 	return parsed, ok
 }
 
+// Checks to see if the field has a custom environment variable name, if not
+// it returns the field name. For example, if the field is `DatabaseURL` and the
+// environment variable name is `DB_URL`, it will return `DB_URL`.
+func getEnvVarNameFromField(field reflect.StructField) string {
+	name := getName(field.Tag.Get("env"))
+	if name == "" {
+		name = field.Name
+	}
+
+	return name
+}
+
+// Validates the environment variables and returns a list of missing and invalid
+// variables. If the value is valid, it will be added to the environment map.
 func Validate(variables interface{}) ([]string, []invalidType) {
 	environment := make(envMapType)
 	t := reflect.TypeOf(variables)
@@ -102,7 +170,8 @@ func Validate(variables interface{}) ([]string, []invalidType) {
 
 	for n := 0; n < t.NumField(); n++ {
 		field := t.Field(n)
-		value := os.Getenv(field.Name)
+		name := strings.ToUpper(getEnvVarNameFromField(field))
+		value := os.Getenv(name)
 		optional := isOptional(field.Tag.Get("env"))
 
 		if value == "" {
@@ -113,7 +182,7 @@ func Validate(variables interface{}) ([]string, []invalidType) {
 				} else {
 					// If the field is optional and has no default value, we can use a zero value
 					environment[field.Name] = envVarType{
-						reflect.Zero(field.Type),
+						reflect.Value{},
 						field.Type.Kind(),
 					}
 
@@ -122,7 +191,7 @@ func Validate(variables interface{}) ([]string, []invalidType) {
 				}
 			} else {
 				// If the field is required and has no value, we add it to the missing list
-				missing = append(missing, field.Name)
+				missing = append(missing, fmt.Sprintf("%s (%s)", field.Name, name))
 
 				// We can continue to the next field, nothing to validate
 				continue
@@ -146,7 +215,7 @@ func Validate(variables interface{}) ([]string, []invalidType) {
 		}
 
 		if ok != nil {
-			invalid = append(invalid, invalidType{field.Name, value})
+			invalid = append(invalid, invalidType{fmt.Sprintf("%s (%s)", field.Name, name), value})
 		} else {
 			var varType reflect.Kind
 			if kind == "slice" {
@@ -165,10 +234,13 @@ func Validate(variables interface{}) ([]string, []invalidType) {
 	return missing, invalid
 }
 
+// Given a slice field and its corresponding environment variable value, it will
+// parse the value into the correct type and return a slice of the parsed values.
+// If the value is invalid, it will return an error.
 func validateAndParseSlice(fieldName string, fieldType string, value string, sep string) ([]any, error) {
 	var values []any
 	var allOk = true
-	for _, slice := range strings.Split(value, sep) {
+	for slice := range strings.SplitSeq(value, sep) {
 		parsed, ok := parseVariable(fieldName, fieldType, slice)
 		values = append(values, parsed)
 		allOk = allOk && ok == nil

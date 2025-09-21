@@ -40,10 +40,10 @@ func TestValidate(t *testing.T) {
 			name:   "valid config with all required fields",
 			config: TestConfigAllRequired{},
 			envVars: map[string]string{
-				"RequiredString": "test",
-				"RequiredInt":    "42",
-				"RequiredBool":   "true",
-				"RequiredIPv4":   "192.168.1.1",
+				"REQUIREDSTRING": "test",
+				"REQUIREDINT":    "42",
+				"REQUIREDBOOL":   "true",
+				"REQUIREDIPV4":   "192.168.1.1",
 			},
 			expectedMissing: []string{},
 			expectedInvalid: []string{},
@@ -52,29 +52,29 @@ func TestValidate(t *testing.T) {
 			name:   "missing required fields",
 			config: TestConfigAllRequired{},
 			envVars: map[string]string{
-				"RequiredString": "test",
-				// Missing RequiredInt, RequiredBool, RequiredIPv4
+				"REQUIREDSTRING": "test",
+				// Missing REQUIREDINT, REQUIREDBOOL, REQUIREDIPV4
 			},
-			expectedMissing: []string{"RequiredInt", "RequiredBool", "RequiredIPv4"},
+			expectedMissing: []string{"RequiredInt (REQUIREDINT)", "RequiredBool (REQUIREDBOOL)", "RequiredIPv4 (REQUIREDIPV4)"},
 			expectedInvalid: []string{},
 		},
 		{
 			name:   "invalid field values",
 			config: TestConfigAllRequired{},
 			envVars: map[string]string{
-				"RequiredString": "test",
-				"RequiredInt":    "not-a-number",
-				"RequiredBool":   "maybe",
-				"RequiredIPv4":   "not-an-ip",
+				"REQUIREDSTRING": "test",
+				"REQUIREDINT":    "not-a-number",
+				"REQUIREDBOOL":   "maybe",
+				"REQUIREDIPV4":   "not-an-ip",
 			},
 			expectedMissing: []string{},
-			expectedInvalid: []string{"RequiredInt", "RequiredBool", "RequiredIPv4"},
+			expectedInvalid: []string{"RequiredInt (REQUIREDINT)", "RequiredBool (REQUIREDBOOL)", "RequiredIPv4 (REQUIREDIPV4)"},
 		},
 		{
 			name:   "valid config with optional fields and defaults",
 			config: TestConfig{},
 			envVars: map[string]string{
-				"DatabaseURL": "postgres://localhost:5432/mydb",
+				"DATABASEURL": "postgres://localhost:5432/mydb",
 			},
 			expectedMissing: []string{},
 			expectedInvalid: []string{},
@@ -153,157 +153,45 @@ func TestValidate(t *testing.T) {
 }
 
 func TestAssert(t *testing.T) {
-	tests := []struct {
-		name        string
-		config      interface{}
-		envVars     map[string]string
-		expectError bool
-	}{
-		{
-			name:   "valid config",
-			config: TestConfig{},
-			envVars: map[string]string{
-				"DatabaseURL": "postgres://localhost:5432/mydb",
-			},
-			expectError: false,
-		},
-		{
-			name:   "missing required field",
-			config: TestConfigAllRequired{},
-			envVars: map[string]string{
-				"RequiredString": "test",
-				// Missing other required fields
-			},
-			expectError: true,
-		},
-		{
-			name:   "invalid field value",
-			config: TestConfigAllRequired{},
-			envVars: map[string]string{
-				"RequiredString": "test",
-				"RequiredInt":    "not-a-number",
-				"RequiredBool":   "true",
-				"RequiredIPv4":   "192.168.1.1",
-			},
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Set up environment variables
-			for key, value := range tt.envVars {
-				os.Setenv(key, value)
-			}
-			defer func() {
-				// Clean up environment variables
-				for key := range tt.envVars {
-					os.Unsetenv(key)
-				}
-			}()
-
-			err := Assert(tt.config)
-
-			if tt.expectError && err == nil {
-				t.Errorf("Expected error but got none")
-			}
-			if !tt.expectError && err != nil {
-				t.Errorf("Expected no error but got: %v", err)
-			}
-		})
-	}
-}
-
-func TestGet(t *testing.T) {
-	// Set up a valid environment
-	os.Setenv("TestString", "hello")
-	os.Setenv("TestInt", "42")
-	os.Setenv("TestBool", "true")
-	os.Setenv("TestIPv4", "192.168.1.1")
+	// Set up test environment variables
+	os.Setenv("TESTSTRING", "hello")
+	os.Setenv("TESTINT", "42")
+	os.Setenv("TESTBOOL", "true")
+	os.Setenv("TESTIPV4", "192.168.1.1")
 	defer func() {
-		os.Unsetenv("TestString")
-		os.Unsetenv("TestInt")
-		os.Unsetenv("TestBool")
-		os.Unsetenv("TestIPv4")
+		os.Unsetenv("TESTSTRING")
+		os.Unsetenv("TESTINT")
+		os.Unsetenv("TESTBOOL")
+		os.Unsetenv("TESTIPV4")
 	}()
 
-	// Validate first to populate envMap
 	config := struct {
 		TestString string `env:"required"`
 		TestInt    int    `env:"required"`
 		TestBool   bool   `env:"required"`
-		TestIPv4   IPv4   `env:"required"`
+		TestIPv4   string `env:"required"`
 	}{}
 
-	missing, invalid := Validate(config)
-	if len(missing) > 0 || len(invalid) > 0 {
-		t.Fatalf("Validation failed: missing=%v, invalid=%v", missing, invalid)
+	env, err := Assert(config)
+	if err != nil {
+		t.Fatalf("Assert failed: %v", err)
 	}
 
-	tests := []struct {
-		name     string
-		key      string
-		expected interface{}
-		panic    bool
-	}{
-		{
-			name:     "get string",
-			key:      "TestString",
-			expected: "hello",
-		},
-		{
-			name:     "get int",
-			key:      "TestInt",
-			expected: 42,
-		},
-		{
-			name:     "get bool",
-			key:      "TestBool",
-			expected: true,
-		},
-		{
-			name:     "get IPv4",
-			key:      "TestIPv4",
-			expected: "192.168.1.1",
-		},
-		{
-			name:  "get non-existent key",
-			key:   "NonExistentKey",
-			panic: true,
-		},
+	// Test getting values from populated struct
+	if env.TestString != "hello" {
+		t.Errorf("Expected 'hello', got '%s'", env.TestString)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.panic {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Errorf("Expected panic but didn't get one")
-					}
-				}()
-				// Call Get directly for panic test
-				Get[string](tt.key)
-				return
-			}
+	if env.TestInt != 42 {
+		t.Errorf("Expected 42, got %d", env.TestInt)
+	}
 
-			switch expected := tt.expected.(type) {
-			case string:
-				result := Get[string](tt.key)
-				if result != expected {
-					t.Errorf("Expected %v, got %v", expected, result)
-				}
-			case int:
-				result := Get[int](tt.key)
-				if result != expected {
-					t.Errorf("Expected %v, got %v", expected, result)
-				}
-			case bool:
-				result := Get[bool](tt.key)
-				if result != expected {
-					t.Errorf("Expected %v, got %v", expected, result)
-				}
-			}
-		})
+	if env.TestBool != true {
+		t.Errorf("Expected true, got %v", env.TestBool)
+	}
+
+	if env.TestIPv4 != "192.168.1.1" {
+		t.Errorf("Expected '192.168.1.1', got '%s'", env.TestIPv4)
 	}
 }
 

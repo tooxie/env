@@ -354,3 +354,80 @@ func TestGetSeparatorInvalidFormat(t *testing.T) {
 		})
 	}
 }
+
+func TestGetName(t *testing.T) {
+	tests := []struct {
+		name        string
+		tag         string
+		expected    string
+		shouldPanic bool
+	}{
+		{
+			name:     "no custom name specified",
+			tag:      "required",
+			expected: "",
+		},
+		{
+			name:     "custom name with single quotes",
+			tag:      "required,name='DATABASE_URL'",
+			expected: "DATABASE_URL",
+		},
+		{
+			name:     "custom name with other tags",
+			tag:      "optional,default='8080',name='SERVER_PORT'",
+			expected: "SERVER_PORT",
+		},
+		{
+			name:     "custom name at beginning",
+			tag:      "name='DEBUG_MODE',optional,default='false'",
+			expected: "DEBUG_MODE",
+		},
+		{
+			name:     "custom name at end",
+			tag:      "required,name='HOST_NAME'",
+			expected: "HOST_NAME",
+		},
+		{
+			name:     "custom name with special characters",
+			tag:      "required,name='API_KEY_123'",
+			expected: "API_KEY_123",
+		},
+		{
+			name:     "empty tag",
+			tag:      "",
+			expected: "",
+		},
+		{
+			name:        "multiple name specifications",
+			tag:         "name='FIRST',name='SECOND'",
+			shouldPanic: true,
+		},
+		{
+			name:     "name without quotes",
+			tag:      "name=NO_QUOTES",
+			expected: "",
+		},
+		{
+			name:     "name with double quotes",
+			tag:      `name="DOUBLE_QUOTES"`,
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.shouldPanic {
+				defer func() {
+					if r := recover(); r == nil {
+						t.Errorf("Expected panic but got none")
+					}
+				}()
+			}
+
+			result := getName(tt.tag)
+			if result != tt.expected {
+				t.Errorf("Expected '%s', got '%s' for tag '%s'", tt.expected, result, tt.tag)
+			}
+		})
+	}
+}

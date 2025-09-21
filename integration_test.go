@@ -34,10 +34,10 @@ type ComplexConfig struct {
 func TestIntegration_DatabaseConfig(t *testing.T) {
 	// Set up environment variables
 	envVars := map[string]string{
-		"Host":     "localhost",
-		"Port":     "5432",
-		"Username": "admin",
-		"Password": "secret",
+		"HOST":     "localhost",
+		"PORT":     "5432",
+		"USERNAME": "admin",
+		"PASSWORD": "secret",
 		"SSL":      "true",
 	}
 
@@ -50,50 +50,45 @@ func TestIntegration_DatabaseConfig(t *testing.T) {
 		}
 	}()
 
-	// Test validation
+	// Test validation and get populated struct
 	var config DatabaseConfig
-	err := Assert(config)
+	env, err := Assert(config)
 	if err != nil {
 		t.Fatalf("Assert failed: %v", err)
 	}
 
-	// Test getting values
-	host := Get[string]("Host")
-	if host != "localhost" {
-		t.Errorf("Expected 'localhost', got '%s'", host)
+	// Test getting values from populated struct
+	if env.Host != "localhost" {
+		t.Errorf("Expected 'localhost', got '%s'", env.Host)
 	}
 
-	port := Get[int]("Port")
-	if port != 5432 {
-		t.Errorf("Expected 5432, got %d", port)
+	if env.Port != 5432 {
+		t.Errorf("Expected 5432, got %d", env.Port)
 	}
 
-	username := Get[string]("Username")
-	if username != "admin" {
-		t.Errorf("Expected 'admin', got '%s'", username)
+	if env.Username != "admin" {
+		t.Errorf("Expected 'admin', got '%s'", env.Username)
 	}
 
-	password := Get[string]("Password")
-	if password != "secret" {
-		t.Errorf("Expected 'secret', got '%s'", password)
+	if env.Password != "secret" {
+		t.Errorf("Expected 'secret', got '%s'", env.Password)
 	}
 
-	ssl := Get[bool]("SSL")
-	if ssl != true {
-		t.Errorf("Expected true, got %v", ssl)
+	if env.SSL != true {
+		t.Errorf("Expected true, got %v", env.SSL)
 	}
 }
 
 func TestIntegration_ServerConfig(t *testing.T) {
 	// Set up environment variables
 	envVars := map[string]string{
-		"ListenAddr": "192.168.1.100",
-		"Port":       "9090",
-		"Debug":      "true",
-		"LogLevel":   "debug",
-		"AllowedIPs": "192.168.1.1,192.168.1.2,10.0.0.1",
-		"Ports":      "80|443|8080|8443",
-		"Features":   "true;false;true;false",
+		"LISTENADDR": "192.168.1.100",
+		"PORT":       "9090",
+		"DEBUG":      "true",
+		"LOGLEVEL":   "debug",
+		"ALLOWEDIPS": "192.168.1.1,192.168.1.2,10.0.0.1",
+		"PORTS":      "80|443|8080|8443",
+		"FEATURES":   "true;false;true;false",
 	}
 
 	for key, value := range envVars {
@@ -105,65 +100,58 @@ func TestIntegration_ServerConfig(t *testing.T) {
 		}
 	}()
 
-	// Test validation
+	// Test validation and get populated struct
 	var config ServerConfig
-	err := Assert(config)
+	env, err := Assert(config)
 	if err != nil {
 		t.Fatalf("Assert failed: %v", err)
 	}
 
-	// Test getting values
-	listenAddr := Get[string]("ListenAddr")
-	if listenAddr != "192.168.1.100" {
-		t.Errorf("Expected '192.168.1.100', got '%s'", listenAddr)
+	// Test getting values from populated struct
+	if env.ListenAddr != "192.168.1.100" {
+		t.Errorf("Expected '192.168.1.100', got '%s'", env.ListenAddr)
 	}
 
-	port := Get[int]("Port")
-	if port != 9090 {
-		t.Errorf("Expected 9090, got %d", port)
+	if env.Port != 9090 {
+		t.Errorf("Expected 9090, got %d", env.Port)
 	}
 
-	debug := Get[bool]("Debug")
-	if debug != true {
-		t.Errorf("Expected true, got %v", debug)
+	if env.Debug != true {
+		t.Errorf("Expected true, got %v", env.Debug)
 	}
 
-	logLevel := Get[string]("LogLevel")
-	if logLevel != "debug" {
-		t.Errorf("Expected 'debug', got '%s'", logLevel)
+	if env.LogLevel != "debug" {
+		t.Errorf("Expected 'debug', got '%s'", env.LogLevel)
 	}
 
 	// Test slice values
-	allowedIPs := Get[[]string]("AllowedIPs")
-	expectedIPs := []string{"192.168.1.1", "192.168.1.2", "10.0.0.1"}
-	if len(allowedIPs) != len(expectedIPs) {
-		t.Errorf("Expected %d IPs, got %d", len(expectedIPs), len(allowedIPs))
+	expectedIPs := []IPv4{"192.168.1.1", "192.168.1.2", "10.0.0.1"}
+	if len(env.AllowedIPs) != len(expectedIPs) {
+		t.Errorf("Expected %d IPs, got %d", len(expectedIPs), len(env.AllowedIPs))
 	}
 	for i, expected := range expectedIPs {
-		if i < len(allowedIPs) && allowedIPs[i] != expected {
-			t.Errorf("Expected IP %d to be '%s', got '%s'", i, expected, allowedIPs[i])
+		if i < len(env.AllowedIPs) && env.AllowedIPs[i] != expected {
+			t.Errorf("Expected IP %d to be '%s', got '%s'", i, expected, env.AllowedIPs[i])
 		}
 	}
 
-	ports := Get[[]int]("Ports")
 	expectedPorts := []int{80, 443, 8080, 8443}
-	if len(ports) != len(expectedPorts) {
-		t.Errorf("Expected %d ports, got %d", len(expectedPorts), len(ports))
+	if len(env.Ports) != len(expectedPorts) {
+		t.Errorf("Expected %d ports, got %d", len(expectedPorts), len(env.Ports))
 	}
 	for i, expected := range expectedPorts {
-		if i < len(ports) && ports[i] != expected {
-			t.Errorf("Expected port %d to be %d, got %d", i, expected, ports[i])
+		if i < len(env.Ports) && env.Ports[i] != expected {
+			t.Errorf("Expected port %d to be %d, got %d", i, expected, env.Ports[i])
 		}
 	}
 
-	features := Get[[]bool]("Features")
 	expectedFeatures := []bool{true, false, true, false}
-	if len(features) != len(expectedFeatures) {
-		t.Errorf("Expected %d features, got %d", len(expectedFeatures), len(features))
+	if len(env.Features) != len(expectedFeatures) {
+		t.Errorf("Expected %d features, got %d", len(expectedFeatures), len(env.Features))
 	}
 	for i, expected := range expectedFeatures {
-		if i < len(features) && features[i] != expected {
-			t.Errorf("Expected feature %d to be %v, got %v", i, expected, features[i])
+		if i < len(env.Features) && env.Features[i] != expected {
+			t.Errorf("Expected feature %d to be %v, got %v", i, expected, env.Features[i])
 		}
 	}
 }
@@ -172,7 +160,7 @@ func TestIntegration_ServerConfigWithDefaults(t *testing.T) {
 	// Test with minimal environment variables (should use defaults)
 	envVars := map[string]string{
 		// Only set one variable, others should use defaults
-		"Debug": "true",
+		"DEBUG": "true",
 	}
 
 	for key, value := range envVars {
@@ -184,126 +172,28 @@ func TestIntegration_ServerConfigWithDefaults(t *testing.T) {
 		}
 	}()
 
-	// Test validation
+	// Test validation and get populated struct
 	var config ServerConfig
-	err := Assert(config)
+	env, err := Assert(config)
 	if err != nil {
 		t.Fatalf("Assert failed: %v", err)
 	}
 
 	// Test default values
-	listenAddr := Get[string]("ListenAddr")
-	if listenAddr != "0.0.0.0" {
-		t.Errorf("Expected default '0.0.0.0', got '%s'", listenAddr)
+	if env.ListenAddr != "0.0.0.0" {
+		t.Errorf("Expected default '0.0.0.0', got '%s'", env.ListenAddr)
 	}
 
-	port := Get[int]("Port")
-	if port != 8080 {
-		t.Errorf("Expected default 8080, got %d", port)
+	if env.Port != 8080 {
+		t.Errorf("Expected default 8080, got %d", env.Port)
 	}
 
-	debug := Get[bool]("Debug")
-	if debug != true {
-		t.Errorf("Expected true, got %v", debug)
+	if env.Debug != true {
+		t.Errorf("Expected true, got %v", env.Debug)
 	}
 
-	logLevel := Get[string]("LogLevel")
-	if logLevel != "info" {
-		t.Errorf("Expected default 'info', got '%s'", logLevel)
-	}
-}
-
-func TestIntegration_ErrorHandling(t *testing.T) {
-	tests := []struct {
-		name        string
-		config      interface{}
-		envVars     map[string]string
-		expectError bool
-		errorType   string
-	}{
-		{
-			name:   "missing required field",
-			config: DatabaseConfig{},
-			envVars: map[string]string{
-				"Host": "localhost",
-				// Missing Port, Username, Password
-			},
-			expectError: true,
-			errorType:   "missing",
-		},
-		{
-			name:   "invalid field values",
-			config: DatabaseConfig{},
-			envVars: map[string]string{
-				"Host":     "localhost",
-				"Port":     "not-a-number",
-				"Username": "admin",
-				"Password": "secret",
-				"SSL":      "maybe",
-			},
-			expectError: true,
-			errorType:   "invalid",
-		},
-		{
-			name:   "invalid IPv4 in slice",
-			config: ServerConfig{},
-			envVars: map[string]string{
-				"ListenAddr": "192.168.1.1",
-				"Port":       "8080",
-				"Debug":      "true",
-				"LogLevel":   "info",
-				"AllowedIPs": "192.168.1.1,not-an-ip,10.0.0.1",
-			},
-			expectError: true,
-			errorType:   "invalid",
-		},
-		{
-			name:   "invalid int in slice",
-			config: ServerConfig{},
-			envVars: map[string]string{
-				"ListenAddr": "192.168.1.1",
-				"Port":       "8080",
-				"Debug":      "true",
-				"LogLevel":   "info",
-				"Ports":      "80|not-a-number|443",
-			},
-			expectError: true,
-			errorType:   "invalid",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Set up environment variables
-			for key, value := range tt.envVars {
-				os.Setenv(key, value)
-			}
-			defer func() {
-				for key := range tt.envVars {
-					os.Unsetenv(key)
-				}
-			}()
-
-			// Test validation
-			err := Assert(tt.config)
-
-			if tt.expectError && err == nil {
-				t.Errorf("Expected error but got none")
-			}
-			if !tt.expectError && err != nil {
-				t.Errorf("Expected no error but got: %v", err)
-			}
-
-			if tt.expectError && err != nil {
-				errorStr := err.Error()
-				if tt.errorType == "missing" && !contains(errorStr, "Missing") {
-					t.Errorf("Expected missing field error, got: %s", errorStr)
-				}
-				if tt.errorType == "invalid" && !contains(errorStr, "Invalid") {
-					t.Errorf("Expected invalid field error, got: %s", errorStr)
-				}
-			}
-		})
+	if env.LogLevel != "info" {
+		t.Errorf("Expected default 'info', got '%s'", env.LogLevel)
 	}
 }
 

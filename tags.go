@@ -10,6 +10,7 @@ const defaultSeparator = " "
 var (
 	defaultRegex   = regexp.MustCompile("default='(?P<Default>.*?)'")
 	separatorRegex = regexp.MustCompile("separator='(?P<Sep>.)'")
+	nameRegex      = regexp.MustCompile("name='(?P<Name>.*?)'")
 )
 
 func toLower(tag string) string {
@@ -39,6 +40,20 @@ func getSeparator(tag string) string {
 
 	if len(m) != 1 {
 		panic("Too many separators in tag")
+	}
+
+	return m[0][1]
+}
+
+func getName(tag string) string {
+	m := nameRegex.FindAllStringSubmatch(tag, -1)
+
+	if len(m) == 0 {
+		return ""
+	}
+
+	if len(m) != 1 {
+		panic("Too many name specifications in tag")
 	}
 
 	return m[0][1]
