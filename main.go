@@ -1,3 +1,6 @@
+// TODO: Add type-specific tag options. For examples, `env:"required,min='8',max='256'"`.
+// TODO: This will allow us to get rid of HTTPURL type, since we could just say:
+// TODO: ApiUrl env.URL `env:"required,protocol='https'"`
 package env
 
 import (
