@@ -142,6 +142,7 @@ as a custom protocol.
 | `required`  | Field must have a value set (clashes with `optional`)                       | `env:"required"`                |
 | `optional`  | Field can be empty, will use `nil` or `default` (clashes with `required`)   | `env:"optional"`                |
 | `default`   | Default value if environment variable is not set (only valid with optional) | `env:"optional,default='8080'"` |
+| `values`    | Comma-separated list of allowed values for the field                        | `env:"values='8000,8080,9000'"` |
 | `name`      | Custom environment variable name override                                   | `env:"name='DB_URL'"`           |
 | `separator` | Custom separator for slice types (default is comma: `","`)                  | `env:"separator=' '"` (Space)   |
 
@@ -161,6 +162,59 @@ type EnvConfig struct {
 	Debug       bool       `env:"optional,default='false'"`
 	ApiEndpoint env.HTTPURL `env:"optional,default='https://api.example.com'"`
 }
+```
+
+### Values Validation
+You can restrict field values to a specific set of allowed values using the `values` property. If a default value is provided, it must be one of the allowed values:
+
+```go
+type EnvConfig struct {
+	// Port must be one of the allowed values
+	Port        int    `env:"values='8000,8080,9000',default='8080'"`
+
+	// Environment must be one of the allowed values
+	Environment string `env:"values='dev,staging,prod'"`
+
+	// While this is technically correct, and valid, it makes no sense (:
+	Debug       bool   `env:"values='true,false',default='false'"`
+}
+```
+
+**Important Rules:**
+- If a field is optional and has a default value, the default must be in the allowed values list
+- If a field has values specified, any provided value (from environment or default) must be in the allowed values list
+
+**Error Handling Distinction:**
+The library treats configuration errors and runtime errors differently:
+
+- **Configuration Errors (Panic)**: If a default value is not in the allowed values list, the library panics immediately. This is a configuration error that cannot be handled at runtime - the developer must fix the code.
+
+- **Runtime Errors (Invalid Field)**: If an environment variable value doesn't match the allowed values list, the field is marked as invalid and returned in the validation results. This is a runtime error that can be handled by the application.
+
+This distinction is important because:
+- Configuration errors indicate a bug in the code that must be fixed before deployment
+- Runtime errors indicate invalid environment configuration that can be handled gracefully
+
+**Example:**
+```go
+type Config struct {
+    Port int `env:"optional,values='8000,8080,9000',default='3000'"`
+}
+
+// This will panic at startup because the default value is invalid
+config := env.MustAssert(Config{})
+```
+
+vs.
+
+```go
+type Config struct {
+    Port int `env:"optional,values='8000,8080,9000',default='8080'"`
+}
+
+// This will work fine, but if PORT=3000 is set in environment:
+// - env.Assert() will return an error with Port marked as invalid
+// - env.MustAssert() will panic with the validation error
 ```
 
 ### Environment Variable Names

@@ -125,6 +125,22 @@ func MustAssert[T any](config T) T {
 	return result
 }
 
+// Checks if a string value is in the allowed values list
+func isValueAllowed(value string, allowedValues []string) bool {
+	if len(allowedValues) == 0 {
+		return true // No values restriction
+	}
+
+	// Check if the value is in the allowed values
+	for _, allowed := range allowedValues {
+		if value == allowed {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Parses the value of the environment variable into the correct type
 func parseVariable(fieldName string, fieldType string, value string) (any, error) {
 	var ok error
@@ -186,6 +202,14 @@ func Validate(variables interface{}) ([]string, []invalidType) {
 				// If the field is optional, we can use the default value if it exists
 				if hasDefault(field.Tag.Get("env")) {
 					value = getDefault(field.Tag.Get("env"))
+
+					// Validate that the default value is in allowed values if values are specified
+					if hasValues(field.Tag.Get("env")) {
+						allowedValues := getValues(field.Tag.Get("env"))
+						if !isValueAllowed(value, allowedValues) {
+							panic(fmt.Sprintf("Default value '%s' for field '%s' is not in allowed values: %v", value, field.Name, allowedValues))
+						}
+					}
 				} else {
 					// If the field is optional and has no default value, we can use a zero value
 					environment[field.Name] = envVarType{
@@ -218,6 +242,15 @@ func Validate(variables interface{}) ([]string, []invalidType) {
 			}
 			parsed, ok = validateAndParseSlice(field.Name, elementTypeName, value, sep)
 		} else {
+			// Check if the value is in the allowed values before parsing
+			if hasValues(field.Tag.Get("env")) {
+				allowedValues := getValues(field.Tag.Get("env"))
+				if !isValueAllowed(value, allowedValues) {
+					invalid = append(invalid, invalidType{fmt.Sprintf("%s (%s)", field.Name, name), value})
+					continue
+				}
+			}
+
 			parsed, ok = parseVariable(field.Name, field.Type.Name(), value)
 		}
 

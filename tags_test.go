@@ -431,3 +431,208 @@ func TestGetName(t *testing.T) {
 		})
 	}
 }
+
+func TestHasValues(t *testing.T) {
+	tests := []struct {
+		name     string
+		tag      string
+		expected bool
+	}{
+		{
+			name:     "has values with single quotes",
+			tag:      "values='8000,8080,9000'",
+			expected: true,
+		},
+		{
+			name:     "has values with other tags",
+			tag:      "optional,values='8000,8080,9000',default='8080'",
+			expected: true,
+		},
+		{
+			name:     "has values at beginning",
+			tag:      "values='8000,8080,9000',optional",
+			expected: true,
+		},
+		{
+			name:     "has values at end",
+			tag:      "optional,values='8000,8080,9000'",
+			expected: true,
+		},
+		{
+			name:     "no values",
+			tag:      "optional",
+			expected: false,
+		},
+		{
+			name:     "empty tag",
+			tag:      "",
+			expected: false,
+		},
+		{
+			name:     "values without quotes",
+			tag:      "values=8000,8080,9000",
+			expected: false,
+		},
+		{
+			name:     "values with double quotes",
+			tag:      `values="8000,8080,9000"`,
+			expected: false,
+		},
+		{
+			name:     "values with empty value",
+			tag:      "values=''",
+			expected: true,
+		},
+		{
+			name:     "values with special characters",
+			tag:      "values='test,value,with,commas'",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := hasValues(tt.tag)
+			if result != tt.expected {
+				t.Errorf("Expected %v, got %v for tag '%s'", tt.expected, result, tt.tag)
+			}
+		})
+	}
+}
+
+func TestGetValues(t *testing.T) {
+	tests := []struct {
+		name     string
+		tag      string
+		expected []string
+	}{
+		{
+			name:     "simple values",
+			tag:      "values='8000,8080,9000'",
+			expected: []string{"8000", "8080", "9000"},
+		},
+		{
+			name:     "values with other tags",
+			tag:      "optional,values='8000,8080,9000',default='8080'",
+			expected: []string{"8000", "8080", "9000"},
+		},
+		{
+			name:     "values at beginning",
+			tag:      "values='8000,8080,9000',optional",
+			expected: []string{"8000", "8080", "9000"},
+		},
+		{
+			name:     "values at end",
+			tag:      "optional,values='8000,8080,9000'",
+			expected: []string{"8000", "8080", "9000"},
+		},
+		{
+			name:     "values with spaces",
+			tag:      "values='8000, 8080, 9000'",
+			expected: []string{"8000", "8080", "9000"},
+		},
+		{
+			name:     "values with special characters",
+			tag:      "values='test,value,with,commas'",
+			expected: []string{"test", "value", "with", "commas"},
+		},
+		{
+			name:     "values with empty value",
+			tag:      "values=''",
+			expected: []string{""},
+		},
+		{
+			name:     "values with single value",
+			tag:      "values='8080'",
+			expected: []string{"8080"},
+		},
+		{
+			name:     "no values",
+			tag:      "optional",
+			expected: nil,
+		},
+		{
+			name:     "empty tag",
+			tag:      "",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getValues(tt.tag)
+			if !equalStringSlices(result, tt.expected) {
+				t.Errorf("Expected %v, got %v for tag '%s'", tt.expected, result, tt.tag)
+			}
+		})
+	}
+}
+
+func TestGetValuesPanic(t *testing.T) {
+	tests := []struct {
+		name string
+		tag  string
+	}{
+		{
+			name: "multiple values specifications",
+			tag:  "values='8000,8080',values='9000,10000'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r == nil {
+					t.Errorf("Expected panic for tag '%s' but didn't get one", tt.tag)
+				}
+			}()
+			getValues(tt.tag)
+		})
+	}
+}
+
+func TestGetValuesInvalidFormat(t *testing.T) {
+	tests := []struct {
+		name     string
+		tag      string
+		expected []string
+	}{
+		{
+			name:     "values without quotes",
+			tag:      "values=8000,8080,9000",
+			expected: nil,
+		},
+		{
+			name:     "values with double quotes",
+			tag:      `values="8000,8080,9000"`,
+			expected: nil,
+		},
+		{
+			name:     "values with invalid format",
+			tag:      "values=invalid",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getValues(tt.tag)
+			if !equalStringSlices(result, tt.expected) {
+				t.Errorf("Expected %v, got %v for tag '%s'", tt.expected, result, tt.tag)
+			}
+		})
+	}
+}
+
+// Helper function to compare string slices
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

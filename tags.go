@@ -11,6 +11,7 @@ var (
 	defaultRegex   = regexp.MustCompile("default='(?P<Default>.*?)'")
 	separatorRegex = regexp.MustCompile("separator='(?P<Sep>.)'")
 	nameRegex      = regexp.MustCompile("name='(?P<Name>.*?)'")
+	valuesRegex    = regexp.MustCompile("values='(?P<Values>.*?)'")
 )
 
 func toLower(tag string) string {
@@ -57,4 +58,30 @@ func getName(tag string) string {
 	}
 
 	return m[0][1]
+}
+
+func hasValues(tag string) bool {
+	m := valuesRegex.FindAllStringSubmatch(tag, -1)
+	return len(m) > 0
+}
+
+func getValues(tag string) []string {
+	m := valuesRegex.FindAllStringSubmatch(tag, -1)
+
+	if len(m) == 0 {
+		return nil
+	}
+
+	if len(m) != 1 {
+		panic("Too many values specifications in tag")
+	}
+
+	valuesStr := m[0][1]
+	// Split by comma and trim whitespace
+	values := strings.Split(valuesStr, ",")
+	for i, v := range values {
+		values[i] = strings.TrimSpace(v)
+	}
+
+	return values
 }
